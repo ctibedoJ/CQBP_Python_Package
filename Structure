@@ -1,0 +1,1378 @@
+Classical Quantum Biophysics (CQBP) Python Package Structure
+Package Overview
+The cqbp package implements the computational methods, models, and algorithms described in the Classical Quantum Biophysics textbook. It provides tools for field-based representation of biological systems, quantum mechanical calculations, multi-scale modeling, and applications in drug discovery and biophysics.
+Package Structure
+1.	Root Directory Files
+__init__.py
+""" Classical Quantum Biophysics (CQBP)
+A Python package for quantum biophysical modeling of biological systems.
+This package implements the computational methods, models, and algorithms described in the Classical Quantum Biophysics textbook.
+Modules
+core : Core functionality and base classes 
+fields : Field-based representations of biological systems 
+quantum : Quantum mechanical methods and models 
+molecular : Molecular representations and operations 
+simulations : Simulation methods and algorithms 
+membrane : Membrane and lipid bilayer models 
+applications : Applications in drug discovery and biophysics 
+visualization : Visualization tools for quantum biophysical systems 
+utils : Utility functions and tools
+For more information, see the documentation at https://www.github.com/ctibedoJ"""
+version = '1.0.0' author = 'Dr. Charles R. Tibedo' email = 'ctibedo@gmail.com' license = 'MIT'
+Import key functionality into the top-level namespace
+from .core import Field, Operator, System 
+from .fields import MolecularField, ProteinField, FieldTransform 
+from .quantum import QuantumSystem, DensityMatrix, Hamiltonian 
+from .molecular import Molecule, Protein, Membrane 
+from .simulations import Simulator, QuantumDynamics, PathIntegral 
+from .applications import DrugDiscovery, PBPK, QuantumBiology
+Set up logging
+import logging logging.getLogger(name).addHandler(logging.NullHandler())
+setup.py
+from setuptools import setup, find_packages
+with open("README.md", "r", encoding="utf-8") as fh: long_description = fh.read()
+setup( name="cqbp", version="1.0.0", author="Dr. Charles R. Tibedo", author_email="ctibedo@gmail.com", description="A Python package for quantum biophysical modeling of biological systems", long_description=long_description, long_description_content_type="text/markdown", url="https://github.com/ctibedoJ", packages=find_packages(), classifiers=[ "Programming Language :: Python :: 3", "License :: MIT License", "Operating System :: OS Independent", "Topic :: Scientific/Engineering :: Bio-Informatics", "Topic :: Scientific/Engineering :: Chemistry", "Topic :: Scientific/Engineering :: Physics", ], python_requires=">=3.8", install_requires=[ "numpy>=1.20.0", "scipy>=1.7.0", "matplotlib>=3.4.0", "pandas>=1.3.0", "sympy>=1.8.0", "networkx>=2.5.0", "scikit-learn>=0.24.0", ], extras_require={ "dev": [ "pytest>=6.2.5", "pytest-cov>=2.12.1", "black>=21.6b0", "isort>=5.9.1", "flake8>=3.9.2", "sphinx>=4.0.2", "sphinx-rtd-theme>=0.5.2", ], "gpu": [ "cupy>=9.0.0", "torch>=1.9.0+cu111", ], "quantum": [ "qiskit>=0.29.0", "cirq>=0.11.0", "pennylane>=0.18.0", "qulacs>=0.3.0", ], }, )
+2.	Core Module
+core/__init__.py
+""" Core functionality and base classes for the CQBP package. """
+from .base import Field, Operator, System, Observable from .constants import CONSTANTS, UNITS from .exceptions import CQBPError, ConvergenceError, ValidationError from .config import configure, get_config, reset_config
+all = [ 'Field', 'Operator', 'System', 'Observable', 'CONSTANTS', 'UNITS', 'CQBPError', 'ConvergenceError', 'ValidationError', 'configure', 'get_config', 'reset_config', ]
+core/base.py
+""" Base classes for the CQBP package. """
+import numpy as np from abc import ABC, abstractmethod
+class Field(ABC): """ Abstract base class for field representations.
+A field is a function that maps points in space to values (scalar, vector, or tensor).
+"""
+
+@abstractmethod
+def evaluate(self, points):
+    """
+    Evaluate the field at the given points.
+    
+    Parameters
+    ----------
+    points : array_like
+        Points at which to evaluate the field, shape (n_points, 3).
+        
+    Returns
+    -------
+    values : array_like
+        Field values at the given points.
+    """
+    pass
+
+@abstractmethod
+def gradient(self, points):
+    """
+    Evaluate the gradient of the field at the given points.
+    
+    Parameters
+    ----------
+    points : array_like
+        Points at which to evaluate the gradient, shape (n_points, 3).
+        
+    Returns
+    -------
+    gradients : array_like
+        Gradient values at the given points.
+    """
+    pass
+
+def __add__(self, other):
+    """Add two fields."""
+    if not isinstance(other, Field):
+        return NotImplemented
+    
+    return SumField(self, other)
+
+def __mul__(self, other):
+    """Multiply a field by a scalar or another field."""
+    if isinstance(other, (int, float, complex)):
+        return ScaledField(self, other)
+    elif isinstance(other, Field):
+        return ProductField(self, other)
+    else:
+        return NotImplemented
+class Operator(ABC): """ Abstract base class for operators.
+An operator transforms one field into another.
+"""
+
+@abstractmethod
+def apply(self, field):
+    """
+    Apply the operator to a field.
+    
+    Parameters
+    ----------
+    field : Field
+        The field to which the operator is applied.
+        
+    Returns
+    -------
+    result : Field
+        The resulting field after applying the operator.
+    """
+    pass
+
+def __call__(self, field):
+    """
+    Apply the operator to a field.
+    
+    Parameters
+    ----------
+    field : Field
+        The field to which the operator is applied.
+        
+    Returns
+    -------
+    result : Field
+        The resulting field after applying the operator.
+    """
+    return self.apply(field)
+class System(ABC): """ Abstract base class for physical systems.
+A system consists of a collection of fields and operators.
+"""
+
+@abstractmethod
+def energy(self):
+    """
+    Calculate the energy of the system.
+    
+    Returns
+    -------
+    energy : float
+        The energy of the system.
+    """
+    pass
+
+@abstractmethod
+def evolve(self, time):
+    """
+    Evolve the system in time.
+    
+    Parameters
+    ----------
+    time : float
+        The time to evolve the system.
+        
+    Returns
+    -------
+    system : System
+        The evolved system.
+    """
+    pass
+class Observable(ABC): """ Abstract base class for observables.
+An observable is a quantity that can be measured in a physical system.
+"""
+
+@abstractmethod
+def measure(self, system):
+    """
+    Measure the observable in the given system.
+    
+    Parameters
+    ----------
+    system : System
+        The system in which to measure the observable.
+        
+    Returns
+    -------
+    value : float or array_like
+        The measured value of the observable.
+    """
+    pass
+
+@abstractmethod
+def expectation(self, state):
+    """
+    Calculate the expectation value of the observable in the given state.
+    
+    Parameters
+    ----------
+    state : State
+        The state in which to calculate the expectation value.
+        
+    Returns
+    -------
+    value : float or array_like
+        The expectation value of the observable.
+    """
+    pass
+class SumField(Field): """Field representing the sum of two fields."""
+def __init__(self, field1, field2):
+    self.field1 = field1
+    self.field2 = field2
+
+def evaluate(self, points):
+    return self.field1.evaluate(points) + self.field2.evaluate(points)
+
+def gradient(self, points):
+    return self.field1.gradient(points) + self.field2.gradient(points)
+class ScaledField(Field): """Field representing a field scaled by a constant."""
+def __init__(self, field, scale):
+    self.field = field
+    self.scale = scale
+
+def evaluate(self, points):
+    return self.scale * self.field.evaluate(points)
+
+def gradient(self, points):
+    return self.scale * self.field.gradient(points)
+class ProductField(Field): """Field representing the product of two fields."""
+def __init__(self, field1, field2):
+    self.field1 = field1
+    self.field2 = field2
+
+def evaluate(self, points):
+    return self.field1.evaluate(points) * self.field2.evaluate(points)
+
+def gradient(self, points):
+    f1 = self.field1.evaluate(points)
+    f2 = self.field2.evaluate(points)
+    g1 = self.field1.gradient(points)
+    g2 = self.field2.gradient(points)
+    
+    # Product rule: \u2207(f*g) = f*\u2207g + g*\u2207f
+    return f1[:, np.newaxis] * g2 + f2[:, np.newaxis] * g1
+core/constants.py
+""" Physical constants and unit conversions for the CQBP package. """
+import numpy as np
+Physical constants in SI units
+CONSTANTS = { # Fundamental constants 'h': 6.62607015e-34, # Planck constant (J\u00b7s) 'hbar': 1.054571817e-34, # Reduced Planck constant (J\u00b7s) 'c': 299792458, # Speed of light in vacuum (m/s) 'e': 1.602176634e-19, # Elementary charge (C) 'k_B': 1.380649e-23, # Boltzmann constant (J/K) 'N_A': 6.02214076e23, # Avogadro constant (1/mol) 'eps_0': 8.8541878128e-12, # Vacuum electric permittivity (F/m) 'mu_0': 1.25663706212e-6, # Vacuum magnetic permeability (N/A\u00b2)
+# Particle masses
+'m_e': 9.1093837015e-31,  # Electron mass (kg)
+'m_p': 1.67262192369e-27,  # Proton mass (kg)
+'m_n': 1.67492749804e-27,  # Neutron mass (kg)
+'u': 1.66053906660e-27,  # Atomic mass unit (kg)
+
+# Electromagnetic constants
+'alpha': 7.2973525693e-3,  # Fine-structure constant
+'R_inf': 10973731.568160,  # Rydberg constant (1/m)
+'mu_B': 9.2740100783e-24,  # Bohr magneton (J/T)
+'mu_N': 5.0507837461e-27,  # Nuclear magneton (J/T)
+
+# Thermodynamic constants
+'R': 8.31446261815324,  # Gas constant (J/(mol\u00b7K))
+
+# Quantum chemistry constants
+'E_h': 4.3597447222071e-18,  # Hartree energy (J)
+'a_0': 5.29177210903e-11,  # Bohr radius (m)
+}
+Unit conversion factors
+UNITS = { # Energy conversions 'J_to_eV': 6.241509074e18, # Joules to electronvolts 'eV_to_J': 1.602176634e-19, # Electronvolts to joules 'J_to_cm-1': 5.034116567e22, # Joules to wavenumbers 'cm-1_to_J': 1.986445857e-23, # Wavenumbers to joules 'J_to_kcal_mol': 0.2390057361376673, # Joules to kcal/mol 'kcal_mol_to_J': 4.184, # kcal/mol to joules 'J_to_hartree': 2.293772138e17, # Joules to hartrees 'hartree_to_J': 4.3597447222071e-18, # Hartrees to joules
+# Length conversions
+'m_to_angstrom': 1e10,  # Meters to angstroms
+'angstrom_to_m': 1e-10,  # Angstroms to meters
+'m_to_bohr': 1.8897259886e10,  # Meters to bohr
+'bohr_to_m': 5.29177210903e-11,  # Bohr to meters
+
+# Time conversions
+'s_to_fs': 1e15,  # Seconds to femtoseconds
+'fs_to_s': 1e-15,  # Femtoseconds to seconds
+'s_to_au': 4.1341373336e16,  # Seconds to atomic units of time
+'au_to_s': 2.4188843265e-17,  # Atomic units of time to seconds
+
+# Temperature conversions
+'K_to_eV': 8.617333262e-5,  # Kelvin to electronvolts
+'eV_to_K': 11604.5250061,  # Electronvolts to kelvin
+
+# Pressure conversions
+'Pa_to_atm': 9.86923e-6,  # Pascal to atmospheres
+'atm_to_Pa': 101325,  # Atmospheres to pascal
+
+# Dipole moment conversions
+'C_m_to_debye': 2.9979245e29,  # Coulomb-meter to debye
+'debye_to_C_m': 3.335641e-30,  # Debye to coulomb-meter
+
+# Field strength conversions
+'V_m_to_au': 1.944689151e-12,  # Volt/meter to atomic units
+'au_to_V_m': 5.14220674763e11,  # Atomic units to volt/meter
+}
+Derived constants
+CONSTANTS['R_y'] = CONSTANTS['R_inf'] * CONSTANTS['h'] * CONSTANTS['c'] # Rydberg energy (J) CONSTANTS['k_e'] = 1 / (4 * np.pi * CONSTANTS['eps_0']) # Coulomb constant (N\u00b7m\u00b2/C\u00b2)
+core/exceptions.py
+""" Custom exceptions for the CQBP package. """
+class CQBPError(Exception): """Base class for all CQBP exceptions.""" pass
+class ConvergenceError(CQBPError): """Exception raised when a calculation fails to converge.""" pass
+class ValidationError(CQBPError): """Exception raised when input validation fails.""" pass
+class NotImplementedError(CQBPError): """Exception raised when a method is not implemented.""" pass
+class ParameterError(CQBPError): """Exception raised when a parameter is invalid.""" pass
+class ComputationalError(CQBPError): """Exception raised when a computational error occurs.""" pass
+class InputError(CQBPError): """Exception raised when input data is invalid.""" pass
+class OutputError(CQBPError): """Exception raised when output data is invalid.""" pass
+core/config.py
+""" Configuration management for the CQBP package. """
+import os import json from pathlib import Path
+Default configuration
+_DEFAULT_CONFIG = { 'precision': 'double', # Numerical precision: 'single', 'double', or 'quad' 'max_threads': 0, # 0 means use all available threads 'use_gpu': False, # Whether to use GPU acceleration 'gpu_device': 0, # GPU device index 'cache_dir': str(Path.home() / '.cqbp' / 'cache'), # Cache directory 'logging_level': 'INFO', # Logging level 'random_seed': None, # Random seed for reproducibility 'units': 'atomic', # Default unit system: 'atomic', 'si', or 'cgs' 'visualization': { 'backend': 'matplotlib', # Visualization backend 'colormap': 'viridis', # Default colormap 'figure_dpi': 100, # Figure DPI 'figure_format': 'png', # Figure format }, 'quantum': { 'solver': 'exact', # Quantum solver: 'exact', 'rk4', 'split_operator', etc. 'basis': 'plane_wave', # Default basis set 'max_basis_size': 1000, # Maximum basis size 'convergence_threshold': 1e-6, # Convergence threshold }, 'molecular': { 'force_field': 'amber14', # Default force field 'implicit_solvent': 'obc', # Default implicit solvent model 'cutoff': 1.0, # Cutoff distance in nm }, }
+Current configuration
+_CONFIG = _DEFAULT_CONFIG.copy()
+User configuration file
+_USER_CONFIG_FILE = Path.home() / '.cqbp' / 'config.json'
+def _load_user_config(): """Load user configuration from file.""" if _USER_CONFIG_FILE.exists(): try: with open(_USER_CONFIG_FILE, 'r') as f: user_config = json.load(f)
+        # Update configuration with user settings
+        _update_nested_dict(_CONFIG, user_config)
+    except Exception as e:
+        import warnings
+        warnings.warn(f"Failed to load user configuration: {e}")
+def _update_nested_dict(d, u): """Update nested dictionary d with values from u.""" import collections.abc for k, v in u.items(): if isinstance(v, collections.abc.Mapping): d[k] = _update_nested_dict(d.get(k, {}), v) else: d[k] = v return d
+def configure(config=None, **kwargs): """ Configure the CQBP package.
+Parameters
+----------
+config : dict, optional
+    Configuration dictionary.
+**kwargs
+    Configuration key-value pairs.
+    
+Examples
+--------
+>>> configure(precision='single', use_gpu=True)
+>>> configure({'quantum': {'solver': 'rk4'}})
+"""
+if config is not None:
+    _update_nested_dict(_CONFIG, config)
+
+if kwargs:
+    _update_nested_dict(_CONFIG, kwargs)
+
+# Save configuration to file
+_USER_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+with open(_USER_CONFIG_FILE, 'w') as f:
+    json.dump(_CONFIG, f, indent=2)
+def get_config(key=None): """ Get configuration value(s).
+Parameters
+----------
+key : str, optional
+    Configuration key. If None, return the entire configuration.
+    
+Returns
+-------
+value : object
+    Configuration value(s).
+    
+Examples
+--------
+>>> get_config('precision')
+'double'
+>>> get_config('quantum.solver')
+'exact'
+>>> get_config()
+{'precision': 'double', ...}
+"""
+if key is None:
+    return _CONFIG.copy()
+
+if '.' in key:
+    keys = key.split('.')
+    value = _CONFIG
+    for k in keys:
+        value = value[k]
+    return value
+
+return _CONFIG[key]
+def reset_config(): """Reset configuration to default values.""" global _CONFIG _CONFIG = _DEFAULT_CONFIG.copy()
+# Save configuration to file
+_USER_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+with open(_USER_CONFIG_FILE, 'w') as f:
+    json.dump(_CONFIG, f, indent=2)
+Load user configuration at import time
+_load_user_config()
+3.	Fields Module
+fields/__init__.py
+""" Field-based representations of biological systems. """
+from .molecular_field import MolecularField, ElectrostaticField, StericField, HydrophobicField from .protein_field import ProteinField, ElectrostaticPotential, HydrophobicityField from .nucleic_acid_field import NucleicAcidField, DNAField, RNAField from .membrane_field import MembraneField, LipidField from .field_transform import FieldTransform, FourierTransform, WaveletTransform from .field_operators import Gradient, Laplacian, Divergence, Curl, Convolution from .field_descriptors import FieldDescriptor, RISM, GRID
+all = [ 'MolecularField', 'ElectrostaticField', 'StericField', 'HydrophobicField', 'ProteinField', 'ElectrostaticPotential', 'HydrophobicityField', 'NucleicAcidField', 'DNAField', 'RNAField', 'MembraneField', 'LipidField', 'FieldTransform', 'FourierTransform', 'WaveletTransform', 'Gradient', 'Laplacian', 'Divergence', 'Curl', 'Convolution', 'FieldDescriptor', 'RISM', 'GRID', ]
+fields/molecular_field.py
+""" Field-based representations of molecules. """
+import numpy as np from scipy.spatial.distance import cdist from ..core import Field, CONSTANTS, UNITS
+class MolecularField(Field): """ Base class for molecular fields.
+A molecular field is a field that represents a molecular property.
+"""
+
+def __init__(self, molecule):
+    """
+    Initialize a molecular field.
+    
+    Parameters
+    ----------
+    molecule : Molecule
+        The molecule to represent.
+    """
+    self.molecule = molecule
+
+def evaluate(self, points):
+    """
+    Evaluate the field at the given points.
+    
+    Parameters
+    ----------
+    points : array_like
+        Points at which to evaluate the field, shape (n_points, 3).
+        
+    Returns
+    -------
+    values : array_like
+        Field values at the given points.
+    """
+    raise NotImplementedError("Subclasses must implement evaluate method")
+
+def gradient(self, points):
+    """
+    Evaluate the gradient of the field at the given points.
+    
+    Parameters
+    ----------
+    points : array_like
+        Points at which to evaluate the gradient, shape (n_points, 3).
+        
+    Returns
+    -------
+    gradients : array_like
+        Gradient values at the given points, shape (n_points, 3).
+    """
+    raise NotImplementedError("Subclasses must implement gradient method")
+class ElectrostaticField(MolecularField): """ Electrostatic field of a molecule.
+The electrostatic field is calculated using Coulomb's law:
+
+E(r) = k_e * sum_i [ q_i * (r - r_i) / |r - r_i|^3 ]
+
+where k_e is the Coulomb constant, q_i is the partial charge of atom i,
+r_i is the position of atom i, and r is the position at which the field
+is evaluated.
+"""
+
+def __init__(self, molecule):
+    """
+    Initialize an electrostatic field.
+    
+    Parameters
+    ----------
+    molecule : Molecule
+        The molecule to represent.
+    """
+    super().__init__(molecule)
+    
+    # Coulomb constant
+    self.k_e = CONSTANTS['k_e']
+
+def evaluate(self, points):
+    """
+    Evaluate the electrostatic field at the given points.
+    
+    Parameters
+    ----------
+    points : array_like
+        Points at which to evaluate the field, shape (n_points, 3).
+        
+    Returns
+    -------
+    field : array_like
+        Electrostatic field at the given points, shape (n_points, 3).
+    """
+    points = np.asarray(points)
+    
+    # Get atomic positions and charges
+    positions = self.molecule.positions
+    charges = self.molecule.partial_charges
+    
+    # Initialize field
+    field = np.zeros((len(points), 3))
+    
+    # Calculate field
+    for i, (pos, q) in enumerate(zip(positions, charges)):
+        # Vector from atom to point
+        r_vec = points - pos
+        
+        # Distance from atom to point
+        r = np.linalg.norm(r_vec, axis=1)
+        
+        # Avoid division by zero
+        r = np.maximum(r, 1e-10)
+        
+        # Coulomb's law
+        field += self.k_e * q * r_vec / r[:, np.newaxis]**3
+    
+    return field
+
+def gradient(self, points):
+    """
+    Evaluate the gradient of the electrostatic field at the given points.
+    
+    Parameters
+    ----------
+    points : array_like
+        Points at which to evaluate the gradient, shape (n_points, 3).
+        
+    Returns
+    -------
+    gradient : array_like
+        Gradient of the electrostatic field at the given points,
+        shape (n_points, 3, 3).
+    """
+    points = np.asarray(points)
+    
+    # Get atomic positions and charges
+    positions = self.molecule.positions
+    charges = self.molecule.partial_charges
+    
+    # Initialize gradient
+    gradient = np.zeros((len(points), 3, 3))
+    
+    # Calculate gradient
+    for i, (pos, q) in enumerate(zip(positions, charges)):
+        # Vector from atom to point
+        r_vec = points - pos
+        
+        # Distance from atom to point
+        r = np.linalg.norm(r_vec, axis=1)
+        
+        # Avoid division by zero
+        r = np.maximum(r, 1e-10)
+        
+        # Gradient of Coulomb's law
+        for j in range(3):
+            for k in range(3):
+                if j == k:
+                    # Diagonal terms
+                    gradient[:, j, k] += self.k_e * q * (3 * r_vec[:, j] * r_vec[:, k] / r**5 - 1 / r**3)
+                else:
+                    # Off-diagonal terms
+                    gradient[:, j, k] += self.k_e * q * 3 * r_vec[:, j] * r_vec[:, k] / r**5
+    
+    return gradient
+class StericField(MolecularField): """ Steric field of a molecule.
+The steric field is calculated using a Gaussian function:
+
+S(r) = sum_i [ A_i * exp(-|r - r_i|^2 / (2 * sigma_i^2)) ]
+
+where A_i is the steric parameter of atom i, sigma_i is related to the
+van der Waals radius of atom i, r_i is the position of atom i, and r is
+the position at which the field is evaluated.
+"""
+
+def __init__(self, molecule):
+    """
+    Initialize a steric field.
+    
+    Parameters
+    ----------
+    molecule : Molecule
+        The molecule to represent.
+    """
+    super().__init__(molecule)
+
+def evaluate(self, points):
+    """
+    Evaluate the steric field at the given points.
+    
+    Parameters
+    ----------
+    points : array_like
+        Points at which to evaluate the field, shape (n_points, 3).
+        
+    Returns
+    -------
+    field : array_like
+        Steric field at the given points, shape (n_points,).
+    """
+    points = np.asarray(points)
+    
+    # Get atomic positions and van der Waals radii
+    positions = self.molecule.positions
+    vdw_radii = self.molecule.vdw_radii
+    
+    # Initialize field
+    field = np.zeros(len(points))
+    
+    # Calculate field
+    for i, (pos, radius) in enumerate(zip(positions, vdw_radii)):
+        # Distance from atom to point
+        r = np.linalg.norm(points - pos, axis=1)
+        
+        # Steric parameter
+        A = 1.0
+        
+        # Sigma parameter (related to van der Waals radius)
+        sigma = radius / 2.0
+        
+        # Gaussian function
+        field += A * np.exp(-0.5 * (r / sigma)**2)
+    
+    return field
+
+def gradient(self, points):
+    """
+    Evaluate the gradient of the steric field at the given points.
+    
+    Parameters
+    ----------
+    points : array_like
+        Points at which to evaluate the gradient, shape (n_points, 3).
+        
+    Returns
+    -------
+    gradient : array_like
+        Gradient of the steric field at the given points, shape (n_points, 3).
+    """
+    points = np.asarray(points)
+    
+    # Get atomic positions and van der Waals radii
+    positions = self.molecule.positions
+    vdw_radii = self.molecule.vdw_radii
+    
+    # Initialize gradient
+    gradient = np.zeros((len(points), 3))
+    
+    # Calculate gradient
+    for i, (pos, radius) in enumerate(zip(positions, vdw_radii)):
+        # Vector from atom to point
+        r_vec = points - pos
+        
+        # Distance from atom to point
+        r = np.linalg.norm(r_vec, axis=1)
+        
+        # Avoid division by zero
+        r = np.maximum(r, 1e-10)
+        
+        # Steric parameter
+        A = 1.0
+        
+        # Sigma parameter (related to van der Waals radius)
+        sigma = radius / 2.0
+        
+        # Gradient of Gaussian function
+        factor = -A * np.exp(-0.5 * (r / sigma)**2) / sigma**2
+        gradient += factor[:, np.newaxis] * r_vec
+    
+    return gradient
+class HydrophobicField(MolecularField): """ Hydrophobic field of a molecule.
+The hydrophobic field is calculated using a Gaussian function:
+
+H(r) = sum_i [ h_i * exp(-|r - r_i|^2 / (2 * tau_i^2)) ]
+
+where h_i is the hydrophobicity parameter of atom i, tau_i is a decay
+parameter, r_i is the position of atom i, and r is the position at which
+the field is evaluated.
+"""
+
+def __init__(self, molecule):
+    """
+    Initialize a hydrophobic field.
+    
+    Parameters
+    ----------
+    molecule : Molecule
+        The molecule to represent.
+    """
+    super().__init__(molecule)
+
+def evaluate(self, points):
+    """
+    Evaluate the hydrophobic field at the given points.
+    
+    Parameters
+    ----------
+    points : array_like
+        Points at which to evaluate the field, shape (n_points, 3).
+        
+    Returns
+    -------
+    field : array_like
+        Hydrophobic field at the given points, shape (n_points,).
+    """
+    points = np.asarray(points)
+    
+    # Get atomic positions and hydrophobicity parameters
+    positions = self.molecule.positions
+    hydrophobicity = self.molecule.hydrophobicity
+    
+    # Initialize field
+    field = np.zeros(len(points))
+    
+    # Calculate field
+    for i, (pos, h) in enumerate(zip(positions, hydrophobicity)):
+        # Distance from atom to point
+        r = np.linalg.norm(points - pos, axis=1)
+        
+        # Decay parameter
+        tau = 1.0  # Default value
+        
+        # Gaussian function
+        field += h * np.exp(-0.5 * (r / tau)**2)
+    
+    return field
+
+def gradient(self, points):
+    """
+    Evaluate the gradient of the hydrophobic field at the given points.
+    
+    Parameters
+    ----------
+    points : array_like
+        Points at which to evaluate the gradient, shape (n_points, 3).
+        
+    Returns
+    -------
+    gradient : array_like
+        Gradient of the hydrophobic field at the given points, shape (n_points, 3).
+    """
+    points = np.asarray(points)
+    
+    # Get atomic positions and hydrophobicity parameters
+    positions = self.molecule.positions
+    hydrophobicity = self.molecule.hydrophobicity
+    
+    # Initialize gradient
+    gradient = np.zeros((len(points), 3))
+    
+    # Calculate gradient
+    for i, (pos, h) in enumerate(zip(positions, hydrophobicity)):
+        # Vector from atom to point
+        r_vec = points - pos
+        
+        # Distance from atom to point
+        r = np.linalg.norm(r_vec, axis=1)
+        
+        # Avoid division by zero
+        r = np.maximum(r, 1e-10)
+        
+        # Decay parameter
+        tau = 1.0  # Default value
+        
+        # Gradient of Gaussian function
+        factor = -h * np.exp(-0.5 * (r / tau)**2) / tau**2
+        gradient += factor[:, np.newaxis] * r_vec
+    
+    return gradient
+4. Quantum Module
+quantum/__init__.py
+""" Quantum mechanical methods and models for biological systems. """
+from .quantum_system import QuantumSystem, State, Wavefunction from .density_matrix import DensityMatrix, ReducedDensityMatrix from .hamiltonian import Hamiltonian, TimeIndependentHamiltonian, TimeDependentHamiltonian from .operators import PositionOperator, MomentumOperator, AngularMomentumOperator from .dynamics import QuantumDynamics, SchrodingerDynamics, LindbladDynamics from .path_integral import PathIntegral, FeynmanPathIntegral, EuclideanPathIntegral from .tunneling import TunnelingCalculator, WKBTunneling, InstantonTunneling from .coherence import CoherenceCalculator, QuantumCoherence, DecoherenceRates from .entanglement import EntanglementCalculator, Concurrence, EntanglementEntropy
+all = [ 'QuantumSystem', 'State', 'Wavefunction', 'DensityMatrix', 'ReducedDensityMatrix', 'Hamiltonian', 'TimeIndependentHamiltonian', 'TimeDependentHamiltonian', 'PositionOperator', 'MomentumOperator', 'AngularMomentumOperator', 'QuantumDynamics', 'SchrodingerDynamics', 'LindbladDynamics', 'PathIntegral', 'FeynmanPathIntegral', 'EuclideanPathIntegral', 'TunnelingCalculator', 'WKBTunneling', 'InstantonTunneling', 'CoherenceCalculator', 'QuantumCoherence', 'DecoherenceRates', 'EntanglementCalculator', 'Concurrence', 'EntanglementEntropy', ]
+quantum/quantum_system.py
+""" Quantum system classes for the CQBP package. """
+import numpy as np from abc import ABC, abstractmethod from ..core import System, Observable
+class QuantumSystem(System): """ Base class for quantum systems.
+A quantum system is characterized by a Hamiltonian and a state.
+"""
+
+def __init__(self, hamiltonian, state=None):
+    """
+    Initialize a quantum system.
+    
+    Parameters
+    ----------
+    hamiltonian : Hamiltonian
+        The Hamiltonian of the system.
+    state : State, optional
+        The initial state of the system.
+    """
+    self.hamiltonian = hamiltonian
+    self.state = state
+
+def energy(self):
+    """
+    Calculate the energy of the system.
+    
+    Returns
+    -------
+    energy : float
+        The energy of the system.
+    """
+    if self.state is None:
+        raise ValueError("System state is not defined")
+    
+    return self.state.expectation(self.hamiltonian)
+
+def evolve(self, time):
+    """
+    Evolve the system in time.
+    
+    Parameters
+    ----------
+    time : float
+        The time to evolve the system.
+        
+    Returns
+    -------
+    system : QuantumSystem
+        The evolved system.
+    """
+    if self.state is None:
+        raise ValueError("System state is not defined")
+    
+    evolved_state = self.state.evolve(self.hamiltonian, time)
+    
+    return QuantumSystem(self.hamiltonian, evolved_state)
+
+def measure(self, observable):
+    """
+    Measure an observable in the system.
+    
+    Parameters
+    ----------
+    observable : Observable
+        The observable to measure.
+        
+    Returns
+    -------
+    value : float or array_like
+        The measured value of the observable.
+    """
+    if self.state is None:
+        raise ValueError("System state is not defined")
+    
+    return observable.measure(self)
+
+def expectation(self, observable):
+    """
+    Calculate the expectation value of an observable.
+    
+    Parameters
+    ----------
+    observable : Observable
+        The observable to calculate the expectation value of.
+        
+    Returns
+    -------
+    value : float or array_like
+        The expectation value of the observable.
+    """
+    if self.state is None:
+        raise ValueError("System state is not defined")
+    
+    return observable.expectation(self.state)
+class State(ABC): """ Abstract base class for quantum states.
+A quantum state represents the state of a quantum system.
+"""
+
+@abstractmethod
+def evolve(self, hamiltonian, time):
+    """
+    Evolve the state in time.
+    
+    Parameters
+    ----------
+    hamiltonian : Hamiltonian
+        The Hamiltonian governing the evolution.
+    time : float
+        The time to evolve the state.
+        
+    Returns
+    -------
+    state : State
+        The evolved state.
+    """
+    pass
+
+@abstractmethod
+def expectation(self, operator):
+    """
+    Calculate the expectation value of an operator.
+    
+    Parameters
+    ----------
+    operator : Operator
+        The operator to calculate the expectation value of.
+        
+    Returns
+    -------
+    value : float or array_like
+        The expectation value of the operator.
+    """
+    pass
+
+@abstractmethod
+def overlap(self, other):
+    """
+    Calculate the overlap with another state.
+    
+    Parameters
+    ----------
+    other : State
+        The other state.
+        
+    Returns
+    -------
+    overlap : complex
+        The overlap between the states.
+    """
+    pass
+
+@abstractmethod
+def normalize(self):
+    """
+    Normalize the state.
+    
+    Returns
+    -------
+    state : State
+        The normalized state.
+    """
+    pass
+class Wavefunction(State): """ Wavefunction representation of a quantum state.
+A wavefunction is a complex-valued function that represents the state of a
+quantum system in position or momentum space.
+"""
+
+def __init__(self, grid, values=None):
+    """
+    Initialize a wavefunction.
+    
+    Parameters
+    ----------
+    grid : array_like
+        The grid on which the wavefunction is defined.
+    values : array_like, optional
+        The values of the wavefunction on the grid.
+    """
+    self.grid = np.asarray(grid)
+    
+    if values is None:
+        # Initialize with zeros
+        self.values = np.zeros(self.grid.shape[0], dtype=complex)
+    else:
+        self.values = np.asarray(values, dtype=complex)
+        
+        if self.values.shape != (self.grid.shape[0],):
+            raise ValueError("Values must have the same shape as grid")
+
+def evolve(self, hamiltonian, time):
+    """
+    Evolve the wavefunction in time.
+    
+    Parameters
+    ----------
+    hamiltonian : Hamiltonian
+        The Hamiltonian governing the evolution.
+    time : float
+        The time to evolve the wavefunction.
+        
+    Returns
+    -------
+    wavefunction : Wavefunction
+        The evolved wavefunction.
+    """
+    # Get the evolution operator
+    U = hamiltonian.evolution_operator(time)
+    
+    # Apply the evolution operator
+    evolved_values = U @ self.values
+    
+    return Wavefunction(self.grid, evolved_values)
+
+def expectation(self, operator):
+    """
+    Calculate the expectation value of an operator.
+    
+    Parameters
+    ----------
+    operator : Operator
+        The operator to calculate the expectation value of.
+        
+    Returns
+    -------
+    value : float or array_like
+        The expectation value of the operator.
+    """
+    # Get the matrix representation of the operator
+    O = operator.matrix_representation(self.grid)
+    
+    # Calculate the expectation value
+    return np.vdot(self.values, O @ self.values).real
+
+def overlap(self, other):
+    """
+    Calculate the overlap with another wavefunction.
+    
+    Parameters
+    ----------
+    other : Wavefunction
+        The other wavefunction.
+        
+    Returns
+    -------
+    overlap : complex
+        The overlap between the wavefunctions.
+    """
+    if not isinstance(other, Wavefunction):
+        raise TypeError("Other state must be a Wavefunction")
+    
+    if not np.array_equal(self.grid, other.grid):
+        raise ValueError("Wavefunctions must be defined on the same grid")
+    
+    # Calculate the overlap
+    return np.vdot(self.values, other.values)
+
+def normalize(self):
+    """
+    Normalize the wavefunction.
+    
+    Returns
+    -------
+    wavefunction : Wavefunction
+        The normalized wavefunction.
+    """
+    # Calculate the norm
+    norm = np.sqrt(np.abs(self.overlap(self)))
+    
+    # Normalize the values
+    normalized_values = self.values / norm
+    
+    return Wavefunction(self.grid, normalized_values)
+
+def probability_density(self):
+    """
+    Calculate the probability density of the wavefunction.
+    
+    Returns
+    -------
+    density : array_like
+        The probability density of the wavefunction.
+    """
+    return np.abs(self.values)**2
+
+def plot(self, ax=None):
+    """
+    Plot the wavefunction.
+    
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes, optional
+        The axes on which to plot the wavefunction.
+        
+    Returns
+    -------
+    ax : matplotlib.axes.Axes
+        The axes with the plot.
+    """
+    import matplotlib.pyplot as plt
+    
+    if ax is None:
+        fig, ax = plt.subplots()
+    
+    # Plot the real and imaginary parts
+    ax.plot(self.grid, self.values.real, label='Real')
+    ax.plot(self.grid, self.values.imag, label='Imaginary')
+    ax.plot(self.grid, self.probability_density(), label='Probability')
+    
+    ax.set_xlabel('Position')
+    ax.set_ylabel('Wavefunction')
+    ax.legend()
+    
+    return ax
+5. Applications Module
+applications/__init__.py
+""" Applications of classical quantum biophysics. """
+from .drug_discovery import DrugDiscovery, VirtualScreening, LeadOptimization from .pbpk import PBPK, PBPKModel, FieldBasedPBPK from .quantum_biology import QuantumBiology, PhotosynthesisModel, EnzymeCatalysisModel from .precision_medicine import PrecisionMedicine, PatientModel, TreatmentOptimization from .risk_assessment import RiskAssessment, RiskFactor, RiskModel
+all = [ 'DrugDiscovery', 'VirtualScreening', 'LeadOptimization', 'PBPK', 'PBPKModel', 'FieldBasedPBPK', 'QuantumBiology', 'PhotosynthesisModel', 'EnzymeCatalysisModel', 'PrecisionMedicine', 'PatientModel', 'TreatmentOptimization', 'RiskAssessment', 'RiskFactor', 'RiskModel', ]
+applications/drug_discovery.py
+""" Drug discovery applications of classical quantum biophysics. """
+import numpy as np from abc import ABC, abstractmethod from ..core import System from ..fields import MolecularField, ProteinField
+class DrugDiscovery: """ Base class for drug discovery applications.
+This class provides methods for virtual screening, lead optimization,
+and other drug discovery tasks.
+"""
+
+def __init__(self, target=None, compounds=None):
+    """
+    Initialize a drug discovery application.
+    
+    Parameters
+    ----------
+    target : Protein, optional
+        The target protein.
+    compounds : list of Molecule, optional
+        The compounds to screen or optimize.
+    """
+    self.target = target
+    self.compounds = compounds or []
+
+def set_target(self, target):
+    """
+    Set the target protein.
+    
+    Parameters
+    ----------
+    target : Protein
+        The target protein.
+    """
+    self.target = target
+
+def add_compound(self, compound):
+    """
+    Add a compound to the list of compounds.
+    
+    Parameters
+    ----------
+    compound : Molecule
+        The compound to add.
+    """
+    self.compounds.append(compound)
+
+def add_compounds(self, compounds):
+    """
+    Add multiple compounds to the list of compounds.
+    
+    Parameters
+    ----------
+    compounds : list of Molecule
+        The compounds to add.
+    """
+    self.compounds.extend(compounds)
+
+def clear_compounds(self):
+    """Clear the list of compounds."""
+    self.compounds = []
+
+def virtual_screening(self, scoring_function=None, n_top=10):
+    """
+    Perform virtual screening of compounds.
+    
+    Parameters
+    ----------
+    scoring_function : callable, optional
+        A function that takes a compound and returns a score.
+        If None, a default scoring function is used.
+    n_top : int, optional
+        The number of top compounds to return.
+        
+    Returns
+    -------
+    top_compounds : list of (Molecule, float)
+        The top compounds and their scores.
+    """
+    if self.target is None:
+        raise ValueError("Target protein is not set")
+    
+    if not self.compounds:
+        raise ValueError("No compounds to screen")
+    
+    if scoring_function is None:
+        scoring_function = self._default_scoring_function
+    
+    # Score compounds
+    scores = []
+    for compound in self.compounds:
+        score = scoring_function(compound, self.target)
+        scores.append((compound, score))
+    
+    # Sort by score (descending)
+    scores.sort(key=lambda x: x[1], reverse=True)
+    
+    # Return top compounds
+    return scores[:n_top]
+
+def lead_optimization(self, lead, objective_functions=None, constraints=None, n_iterations=100):
+    """
+    Perform lead optimization.
+    
+    Parameters
+    ----------
+    lead : Molecule
+        The lead compound to optimize.
+    objective_functions : list of callable, optional
+        Functions that take a compound and return a value to maximize.
+        If None, a default objective function is used.
+    constraints : list of callable, optional
+        Functions that take a compound and return True if the constraint is satisfied.
+        If None, no constraints are applied.
+    n_iterations : int, optional
+        The number of optimization iterations.
+        
+    Returns
+    -------
+    optimized_lead : Molecule
+        The optimized lead compound.
+    """
+    if self.target is None:
+        raise ValueError("Target protein is not set")
+    
+    if objective_functions is None:
+        objective_functions = [self._default_objective_function]
+    
+    if constraints is None:
+        constraints = []
+    
+    # Initialize
+    current_lead = lead
+    current_scores = [f(current_lead, self.target) for f in objective_functions]
+    
+    # Optimization loop
+    for i in range(n_iterations):
+        # Generate candidates
+        candidates = self._generate_candidates(current_lead)
+        
+        # Filter by constraints
+        valid_candidates = []
+        for candidate in candidates:
+            if all(constraint(candidate) for constraint in constraints):
+                valid_candidates.append(candidate)
+        
+        if not valid_candidates:
+            # No valid candidates
+            break
+        
+        # Score candidates
+        candidate_scores = []
+        for candidate in valid_candidates:
+            scores = [f(candidate, self.target) for f in objective_functions]
+            candidate_scores.append((candidate, scores))
+        
+        # Select best candidate (simple strategy: sum of scores)
+        best_candidate = None
+        best_sum = -np.inf
+        for candidate, scores in candidate_scores:
+            score_sum = sum(scores)
+            if score_sum > best_sum:
+                best_sum = score_sum
+                best_candidate = candidate
+        
+        # Update current lead
+        if best_sum > sum(current_scores):
+            current_lead = best_candidate
+            current_scores = [f(current_lead, self.target) for f in objective_functions]
+        else:
+            # No improvement
+            break
+    
+    return current_lead
+
+def _default_scoring_function(self, compound, target):
+    """
+    Default scoring function for virtual screening.
+    
+    Parameters
+    ----------
+    compound : Molecule
+        The compound to score.
+    target : Protein
+        The target protein.
+        
+    Returns
+    -------
+    score : float
+        The score of the compound.
+    """
+    # Create fields
+    compound_field = MolecularField(compound)
+    target_field = ProteinField(target)
+    
+    # Calculate overlap
+    overlap = self._calculate_field_overlap(compound_field, target_field)
+    
+    return overlap
+
+def _default_objective_function(self, compound, target):
+    """
+    Default objective function for lead optimization.
+    
+    Parameters
+    ----------
+    compound : Molecule
+        The compound to score.
+    target : Protein
+        The target protein.
+        
+    Returns
+    -------
+    score : float
+        The score of the compound.
+    """
+    # Same as default scoring function
+    return self._default_scoring_function(compound, target)
+
+def _calculate_field_overlap(self, field1, field2):
+    """
+    Calculate the overlap between two fields.
+    
+    Parameters
+    ----------
+    field1 : Field
+        The first field.
+    field2 : Field
+        The second field.
+        
+    Returns
+    -------
+    overlap : float
+        The overlap between the fields.
+    """
+    # Generate grid points
+    grid = self._generate_grid()
+    
+    # Evaluate fields
+    values1 = field1.evaluate(grid)
+    values2 = field2.evaluate(grid)
+    
+    # Calculate overlap
+    overlap = np.sum(values1 * values2)
+    
+    return overlap
+
+def _generate_grid(self):
+    """
+    Generate a grid for field calculations.
+    
+    Returns
+    -------
+    grid : array_like
+        The grid points, shape (n_points, 3).
+    """
+    # Simple cubic grid
+    x = np.linspace(-10, 10, 20)
+    y = np.linspace(-10, 10, 20)
+    z = np.linspace(-10, 10, 20)
+    
+    grid = np.array(np.meshgrid(x, y, z)).T.reshape(-1, 3)
+    
+    return grid
+
+def _generate_candidates(self, lead):
+    """
+    Generate candidate compounds for lead optimization.
+    
+    Parameters
+    ----------
+    lead : Molecule
+        The lead compound.
+        
+    Returns
+    -------
+    candidates : list of Molecule
+        The candidate compounds.
+    """
+    # This is a placeholder
+    # In a real implementation, this would generate structural variants
+    return [lead]
+6. Additional Modules
+The package also includes the following modules, each with their own structure similar to the ones shown above:
+molecular/__init__.py
+""" Molecular representations and operations. """
+from .molecule import Molecule, Atom, Bond from .protein import Protein, Residue, Chain from .membrane import Membrane, Lipid, LipidBilayer from .nucleic_acid import NucleicAcid, DNA, RNA from .complex import Complex, ProteinComplex, ProteinLigandComplex
+all = [ 'Molecule', 'Atom', 'Bond', 'Protein', 'Residue', 'Chain', 'Membrane', 'Lipid', 'LipidBilayer', 'NucleicAcid', 'DNA', 'RNA', 'Complex', 'ProteinComplex', 'ProteinLigandComplex', ]
+simulations/__init__.py
+""" Simulation methods and algorithms. """
+from .simulator import Simulator, EnsembleSimulator, TrajectorySimulator from .quantum_dynamics import QuantumDynamics, SchrodingerDynamics, LindbladDynamics from .path_integral import PathIntegral, FeynmanPathIntegral, EuclideanPathIntegral from .monte_carlo import MonteCarlo, QuantumMonteCarlo, PathIntegralMonteCarlo from .molecular_dynamics import MolecularDynamics, QuantumMolecularDynamics, PathIntegralMD
+all = [ 'Simulator', 'EnsembleSimulator', 'TrajectorySimulator', 'QuantumDynamics', 'SchrodingerDynamics', 'LindbladDynamics', 'PathIntegral', 'FeynmanPathIntegral', 'EuclideanPathIntegral', 'MonteCarlo', 'QuantumMonteCarlo', 'PathIntegralMonteCarlo', 'MolecularDynamics', 'QuantumMolecularDynamics', 'PathIntegralMD', ]
+membrane/__init__.py
+""" Membrane and lipid bilayer models. """
+from .lipid import Lipid, LipidBuilder from .bilayer import LipidBilayer, PlanarBilayer, VesicleBilayer from .membrane_protein import MembraneProtein, TransmembraneProtein, PeripheralProtein from .membrane_system import MembraneSystem, MembraneProteinSystem
+all = [ 'Lipid', 'LipidBuilder', 'LipidBilayer', 'PlanarBilayer', 'VesicleBilayer', 'MembraneProtein', 'TransmembraneProtein', 'PeripheralProtein', 'MembraneSystem', 'MembraneProteinSystem', ]
+utils/__init__.py
+""" Utility functions and tools. """
+from .math_utils import integrate, differentiate, interpolate, fft, wavelet from .io_utils import read_molecule, write_molecule, read_trajectory, write_trajectory from .parallel import parallel_map, parallel_reduce, distribute_tasks from .units import convert_units, get_unit_conversion, set_unit_system from .logging import setup_logger, get_logger, log_execution_time
+all = [ 'integrate', 'differentiate', 'interpolate', 'fft', 'wavelet', 'read_molecule', 'write_molecule', 'read_trajectory', 'write_trajectory', 'parallel_map', 'parallel_reduce', 'distribute_tasks', 'convert_units', 'get_unit_conversion', 'set_unit_system', 'setup_logger', 'get_logger', 'log_execution_time', ]
+Complete Package Structure
+The complete Classical Quantum Biophysics (CQBP) Python package structure includes:
+1.	Root Directory Files • __init__.py - Package initialization • setup.py - Package installation configuration • README.md - Package documentation
+2.	Core Module • core/__init__.py - Core functionality initialization • core/base.py - Base classes (Field, Operator, System, Observable) • core/constants.py - Physical constants and unit conversions • core/exceptions.py - Custom exceptions • core/config.py - Configuration management
+3.	Fields Module • fields/__init__.py - Fields module initialization • fields/molecular_field.py - Molecular field representations • fields/protein_field.py - Protein field representations • fields/nucleic_acid_field.py - Nucleic acid field representations • fields/membrane_field.py - Membrane field representations • fields/field_transform.py - Field transformations • fields/field_operators.py - Field operators • fields/field_descriptors.py - Field descriptors
+4.	Quantum Module • quantum/__init__.py - Quantum module initialization • quantum/quantum_system.py - Quantum system classes • quantum/density_matrix.py - Density matrix representations • quantum/hamiltonian.py - Hamiltonian operators • quantum/operators.py - Quantum operators • quantum/dynamics.py - Quantum dynamics • quantum/path_integral.py - Path integral methods • quantum/tunneling.py - Tunneling calculations • quantum/coherence.py - Quantum coherence • quantum/entanglement.py - Quantum entanglement
+5.	Molecular Module • molecular/__init__.py - Molecular module initialization • molecular/molecule.py - Molecule classes • molecular/protein.py - Protein classes • molecular/nucleic_acid.py - Nucleic acid classes • molecular/complex.py - Molecular complex classes
+6.	Simulations Module • simulations/__init__.py - Simulation module initialization • simulations/simulator.py - Simulator base classes • simulations/quantum_dynamics.py - Quantum dynamics simulations • simulations/path_integral.py - Path integral simulations • simulations/monte_carlo.py - Monte Carlo methods • simulations/molecular_dynamics.py - Molecular dynamics simulations
+7.	Membrane Module • membrane/__init__.py - Membrane module initialization • membrane/lipid.py - Lipid classes • membrane/bilayer.py - Lipid bilayer classes • membrane/membrane_protein.py - Membrane protein classes • membrane/membrane_system.py - Membrane system classes
+8.	Applications Module • applications/__init__.py - Applications module initialization • applications/drug_discovery.py - Drug discovery applications • applications/pbpk.py - PBPK modeling • applications/quantum_biology.py - Quantum biology applications • applications/precision_medicine.py - Precision medicine applications • applications/risk_assessment.py - Risk assessment applications
+9.	Utils Module • utils/__init__.py - Utils module initialization • utils/math_utils.py - Mathematical utilities • utils/io_utils.py - Input/output utilities • utils/parallel.py - Parallel computing utilities • utils/units.py - Unit conversion utilities • utils/logging.py - Logging utilities
+10.	Examples Directory • examples/__init__.py - Examples module initialization • examples/quantum_dynamics_example.ipynb - Quantum dynamics examples • examples/drug_discovery_example.ipynb - Drug discovery examples • examples/path_integral_example.ipynb - Path integral examples
+This package structure provides a comprehensive framework for implementing the computational methods and models described in the Classical Quantum Biophysics textbook, enabling researchers to apply these concepts to real-world problems in drug discovery, biophysics, and quantum biology.
